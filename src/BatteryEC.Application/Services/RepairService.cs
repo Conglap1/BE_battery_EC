@@ -8,15 +8,18 @@ namespace BatteryEC.Application.Services;
 public class RepairService : IRepairService
 {
     private readonly IRepairTicketRepository _repairTicketRepository;
+    private readonly IInventoryRepository _inventoryRepository;
     private readonly IGenericRepository<ProductVariant> _variantRepository;
     private readonly IUnitOfWork _unitOfWork;
 
     public RepairService(
         IRepairTicketRepository repairTicketRepository,
+        IInventoryRepository inventoryRepository,
         IGenericRepository<ProductVariant> variantRepository,
         IUnitOfWork unitOfWork)
     {
         _repairTicketRepository = repairTicketRepository;
+        _inventoryRepository = inventoryRepository;
         _variantRepository = variantRepository;
         _unitOfWork = unitOfWork;
     }
@@ -52,6 +55,67 @@ public class RepairService : IRepairService
         if (ticket == null) return null;
 
         return MapToDto(ticket);
+    }
+
+    public async Task<bool> AddRepairItemAsync(long ticketId, long productVariantId, int quantity, decimal unitPrice, long userId, CancellationToken cancellationToken = default)
+    {
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var ticket = await _repairTicketRepository.GetWithItemsAsync(ticketId, cancellationToken);
+            if (ticket == null || ticket.TicketStatus == "Completed" || ticket.TicketStatus == "Delivered")
+            {
+                return false;
+            }
+
+            var variant = await _variantRepository.GetByIdAsync(productVariantId, cancellationToken);
+            if (variant == null) return false;
+
+            decimal lineTotal = quantity * unitPrice;
+            ticket.Items.Add(new RepairTicketItem
+            {
+                RepairTicketId = ticketId,
+                ProductVariantId = productVariantId,
+                Quantity = quantity,
+                UnitPrice = unitPrice,
+                LineTotal = lineTotal
+            });
+
+            // Update ticket final/estimated cost
+            ticket.FinalCost += lineTotal;
+
+            // Deduct spare part from inventory
+            var inventory = await _inventoryRepository.GetByVariantIdAsync(productVariantId, cancellationToken);
+            if (inventory != null)
+            {
+                inventory.QuantityOnHand -= quantity;
+                inventory.UpdatedAt = DateTime.UtcNow;
+                _inventoryRepository.Update(inventory);
+            }
+
+            await _inventoryRepository.AddTransactionAsync(new BatteryEC.Domain.Entities.Inventory.InventoryTransaction
+            {
+                ProductVariantId = productVariantId,
+                TransactionType = "RepairConsumption",
+                QuantityChange = -quantity,
+                ReferenceType = "RepairTicket",
+                ReferenceId = ticketId,
+                UnitCost = variant.CostPrice ?? 0,
+                CreatedByUserId = userId,
+                Note = $"Parts used in repair ticket {ticket.TicketCode}",
+                CreatedAt = DateTime.UtcNow
+            }, cancellationToken);
+
+            _repairTicketRepository.Update(ticket);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+            return true;
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw;
+        }
     }
 
     public async Task<bool> UpdateStatusAsync(long ticketId, string status, string? solutionNote, decimal? finalCost, CancellationToken cancellationToken = default)

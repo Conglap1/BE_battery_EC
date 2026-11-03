@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: battery-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: battery_ec
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - battery_ec_data:/var/lib/postgresql/data
+
+volumes:
+  battery_ec_data:
+    name: battery_ec_data

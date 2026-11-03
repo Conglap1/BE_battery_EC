@@ -115,6 +115,83 @@ public class OrderService : IOrderService
         return true;
     }
 
+    public async Task<bool> ShipOrderAsync(long orderId, string carrierName, string trackingCode, long shippedByUserId, CancellationToken cancellationToken = default)
+    {
+        var order = await _orderRepository.GetWithDetailsAsync(orderId, cancellationToken);
+        if (order == null || (order.OrderStatus != "Confirmed" && order.OrderStatus != "Processing"))
+        {
+            return false;
+        }
+
+        order.OrderStatus = "Shipped";
+        order.Shipments.Add(new Shipment
+        {
+            OrderId = order.OrderId,
+            ShippingMethodId = 1,
+            CarrierName = carrierName,
+            TrackingNumber = trackingCode,
+            ShipmentStatus = "InTransit",
+            ShippedAt = DateTime.UtcNow
+        });
+
+        _orderRepository.Update(order);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<bool> CompleteOrderAsync(long orderId, CancellationToken cancellationToken = default)
+    {
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var order = await _orderRepository.GetWithDetailsAsync(orderId, cancellationToken);
+            if (order == null || order.OrderStatus != "Shipped")
+            {
+                return false;
+            }
+
+            order.OrderStatus = "Completed";
+            order.PaymentStatus = "Paid";
+            order.CompletedAt = DateTime.UtcNow;
+
+            // Deduct real inventory and release reserved stock
+            foreach (var item in order.Items)
+            {
+                var inventory = await _inventoryRepository.GetByVariantIdAsync(item.ProductVariantId, cancellationToken);
+                if (inventory != null)
+                {
+                    inventory.QuantityOnHand -= item.Quantity;
+                    inventory.QuantityReserved = Math.Max(0, inventory.QuantityReserved - item.Quantity);
+                    inventory.UpdatedAt = DateTime.UtcNow;
+                    _inventoryRepository.Update(inventory);
+                }
+
+                await _inventoryRepository.AddTransactionAsync(new BatteryEC.Domain.Entities.Inventory.InventoryTransaction
+                {
+                    ProductVariantId = item.ProductVariantId,
+                    TransactionType = "OnlineSale",
+                    QuantityChange = -item.Quantity,
+                    ReferenceType = "Order",
+                    ReferenceId = order.OrderId,
+                    UnitCost = item.CostPrice ?? 0,
+                    CreatedByUserId = order.UserId,
+                    Note = $"Delivered order {order.OrderCode}",
+                    CreatedAt = DateTime.UtcNow
+                }, cancellationToken);
+            }
+
+            _orderRepository.Update(order);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+            return true;
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw;
+        }
+    }
+
     public async Task<bool> CancelOrderAsync(long orderId, CancellationToken cancellationToken = default)
     {
         await _unitOfWork.BeginTransactionAsync(cancellationToken);

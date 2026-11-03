@@ -45,6 +45,24 @@ public class RepairsController : ControllerBase
         return Ok(ApiResponse<RepairTicketDto>.Ok(ticket));
     }
 
+    [HttpPost("{id:long}/items")]
+    public async Task<ActionResult<ApiResponse<bool>>> AddRepairItem(
+        long id,
+        [FromQuery] long variantId,
+        [FromQuery] int quantity = 1,
+        [FromQuery] decimal unitPrice = 0,
+        [FromQuery] long userId = 1,
+        CancellationToken cancellationToken = default)
+    {
+        var success = await _repairService.AddRepairItemAsync(id, variantId, quantity, unitPrice, userId, cancellationToken);
+        if (!success)
+        {
+            return BadRequest(ApiResponse<bool>.Fail($"Unable to add component #{variantId} to repair ticket #{id}."));
+        }
+
+        return Ok(ApiResponse<bool>.Ok(true, "Spare part consumed from inventory and added to repair ticket."));
+    }
+
     [HttpPut("{id:long}/status")]
     public async Task<ActionResult<ApiResponse<bool>>> UpdateStatus(
         long id,

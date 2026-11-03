@@ -54,6 +54,36 @@ public class OrdersController : ControllerBase
         return Ok(ApiResponse<bool>.Ok(true, "Order confirmed successfully."));
     }
 
+    [HttpPost("{id:long}/ship")]
+    public async Task<ActionResult<ApiResponse<bool>>> ShipOrder(
+        long id,
+        [FromQuery] string carrier = "GHTK",
+        [FromQuery] string trackingCode = "",
+        [FromQuery] long userId = 1,
+        CancellationToken cancellationToken = default)
+    {
+        var code = string.IsNullOrWhiteSpace(trackingCode) ? $"TRACK-{DateTime.UtcNow.Ticks}" : trackingCode;
+        var success = await _orderService.ShipOrderAsync(id, carrier, code, userId, cancellationToken);
+        if (!success)
+        {
+            return BadRequest(ApiResponse<bool>.Fail($"Unable to mark order #{id} as shipped. Ensure status is Confirmed or Processing."));
+        }
+
+        return Ok(ApiResponse<bool>.Ok(true, "Order handed over to carrier successfully."));
+    }
+
+    [HttpPost("{id:long}/complete")]
+    public async Task<ActionResult<ApiResponse<bool>>> CompleteOrder(long id, CancellationToken cancellationToken)
+    {
+        var success = await _orderService.CompleteOrderAsync(id, cancellationToken);
+        if (!success)
+        {
+            return BadRequest(ApiResponse<bool>.Fail($"Unable to complete order #{id}. Ensure status is Shipped."));
+        }
+
+        return Ok(ApiResponse<bool>.Ok(true, "Order completed, real stock deducted, and warranty activated."));
+    }
+
     [HttpPost("{id:long}/cancel")]
     public async Task<ActionResult<ApiResponse<bool>>> CancelOrder(long id, CancellationToken cancellationToken)
     {
