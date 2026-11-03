@@ -1,0 +1,10 @@
+using BatteryEC.Application.DTOs.Repairs;
+
+namespace BatteryEC.Application.Services;
+
+public interface IRepairService
+{
+    Task<RepairTicketDto> CreateRepairTicketAsync(CreateRepairTicketDto dto, long createdByUserId, CancellationToken cancellationToken = default);
+    Task<RepairTicketDto?> GetRepairTicketByCodeAsync(string ticketCode, CancellationToken cancellationToken = default);
+    Task<bool> UpdateStatusAsync(long ticketId, string status, string? solutionNote, decimal? finalCost, CancellationToken cancellationToken = default);
+}

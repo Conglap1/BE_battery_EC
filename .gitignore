@@ -1,0 +1,43 @@
+# =============================================================================
+# .gitignore for Backend (ASP.NET Core .NET 8 Clean Architecture)
+# =============================================================================
+
+# Build results
+[Bb]in/
+[Oo]bj/
+[Pp]ublish/
+[Dd]ebug/
+[Rr]elease/
+
+# Visual Studio / Rider / VSCode
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.userprefs
+*.dbmdl
+*.jfm
+*.DotSettings.user
+
+# Sensitive files & secrets
+appsettings.Production.json
+appsettings.*.local.json
+appsettings.Secrets.json
+secrets.json
+*.secrets.json
+.env
+.env.*
+!.env.example
+
+# Certificates & Keys
+*.pfx
+*.p12
+*.pem
+*.key
+
+# Logs & Dumps
+*.log
+*.tmp
+*.dmp
+*.crash
