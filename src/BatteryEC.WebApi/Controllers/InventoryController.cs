@@ -1,10 +1,13 @@
 using BatteryEC.Application.Common.Models;
 using BatteryEC.Application.DTOs.Inventory;
 using BatteryEC.Application.Services;
+using BatteryEC.Domain.Enums;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BatteryEC.WebApi.Controllers;
 
+[Authorize(Roles = $"{RoleType.WarehouseStaff},{RoleType.Admin}")]
 [ApiController]
 [Route("api/[controller]")]
 public class InventoryController : ControllerBase

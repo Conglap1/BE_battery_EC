@@ -1,26 +1,38 @@
+using BatteryEC.Application.Common.Interfaces;
 using BatteryEC.Application.Common.Models;
 using BatteryEC.Application.DTOs.Orders;
 using BatteryEC.Application.Services;
+using BatteryEC.Domain.Enums;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BatteryEC.WebApi.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class OrdersController : ControllerBase
 {
     private readonly IOrderService _orderService;
+    private readonly ICurrentUserService _currentUserService;
 
-    public OrdersController(IOrderService orderService)
+    public OrdersController(IOrderService orderService, ICurrentUserService currentUserService)
     {
         _orderService = orderService;
+        _currentUserService = currentUserService;
     }
 
+    [Authorize]
     [HttpPost]
     public async Task<ActionResult<ApiResponse<OrderDto>>> CreateOrder([FromBody] CreateOrderDto dto, CancellationToken cancellationToken)
     {
         try
         {
+            if (dto.UserId <= 0)
+            {
+                dto.UserId = _currentUserService.UserId ?? 1;
+            }
+
             var order = await _orderService.CreateOrderAsync(dto, cancellationToken);
             return CreatedAtAction(nameof(GetOrderByCode), new { code = order.OrderCode }, ApiResponse<OrderDto>.Ok(order, "Order placed successfully."));
         }
@@ -30,6 +42,7 @@ public class OrdersController : ControllerBase
         }
     }
 
+    [Authorize]
     [HttpGet("{code}")]
     public async Task<ActionResult<ApiResponse<OrderDto>>> GetOrderByCode(string code, CancellationToken cancellationToken)
     {
@@ -42,10 +55,12 @@ public class OrdersController : ControllerBase
         return Ok(ApiResponse<OrderDto>.Ok(order));
     }
 
+    [Authorize(Roles = $"{RoleType.StoreManager},{RoleType.Admin}")]
     [HttpPost("{id:long}/confirm")]
     public async Task<ActionResult<ApiResponse<bool>>> ConfirmOrder(long id, [FromQuery] long userId = 1, CancellationToken cancellationToken = default)
     {
-        var success = await _orderService.ConfirmOrderAsync(id, userId, cancellationToken);
+        var effectiveUserId = userId > 0 ? userId : (_currentUserService.UserId ?? 1);
+        var success = await _orderService.ConfirmOrderAsync(id, effectiveUserId, cancellationToken);
         if (!success)
         {
             return BadRequest(ApiResponse<bool>.Fail($"Unable to confirm order #{id}."));
@@ -54,6 +69,7 @@ public class OrdersController : ControllerBase
         return Ok(ApiResponse<bool>.Ok(true, "Order confirmed successfully."));
     }
 
+    [Authorize(Roles = $"{RoleType.StoreManager},{RoleType.Admin}")]
     [HttpPost("{id:long}/ship")]
     public async Task<ActionResult<ApiResponse<bool>>> ShipOrder(
         long id,
@@ -62,8 +78,9 @@ public class OrdersController : ControllerBase
         [FromQuery] long userId = 1,
         CancellationToken cancellationToken = default)
     {
+        var effectiveUserId = userId > 0 ? userId : (_currentUserService.UserId ?? 1);
         var code = string.IsNullOrWhiteSpace(trackingCode) ? $"TRACK-{DateTime.UtcNow.Ticks}" : trackingCode;
-        var success = await _orderService.ShipOrderAsync(id, carrier, code, userId, cancellationToken);
+        var success = await _orderService.ShipOrderAsync(id, carrier, code, effectiveUserId, cancellationToken);
         if (!success)
         {
             return BadRequest(ApiResponse<bool>.Fail($"Unable to mark order #{id} as shipped. Ensure status is Confirmed or Processing."));
@@ -72,6 +89,7 @@ public class OrdersController : ControllerBase
         return Ok(ApiResponse<bool>.Ok(true, "Order handed over to carrier successfully."));
     }
 
+    [Authorize(Roles = $"{RoleType.StoreManager},{RoleType.Admin}")]
     [HttpPost("{id:long}/complete")]
     public async Task<ActionResult<ApiResponse<bool>>> CompleteOrder(long id, CancellationToken cancellationToken)
     {
@@ -84,6 +102,7 @@ public class OrdersController : ControllerBase
         return Ok(ApiResponse<bool>.Ok(true, "Order completed, real stock deducted, and warranty activated."));
     }
 
+    [Authorize(Roles = $"{RoleType.StoreManager},{RoleType.Admin}")]
     [HttpPost("{id:long}/cancel")]
     public async Task<ActionResult<ApiResponse<bool>>> CancelOrder(long id, CancellationToken cancellationToken)
     {

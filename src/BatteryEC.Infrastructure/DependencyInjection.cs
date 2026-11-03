@@ -1,9 +1,12 @@
 using BatteryEC.Application.Common.Interfaces;
+using BatteryEC.Application.Common.Models;
 using BatteryEC.Domain.Repositories;
 using BatteryEC.Infrastructure.Persistence;
 using BatteryEC.Infrastructure.Persistence.Dapper;
 using BatteryEC.Infrastructure.Persistence.Dapper.Queries;
 using BatteryEC.Infrastructure.Persistence.Repositories;
+using BatteryEC.Infrastructure.Security;
+using BatteryEC.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -42,6 +45,16 @@ public static class DependencyInjection
         services.AddScoped<IOrderRepository, OrderRepository>();
         services.AddScoped<IRepairTicketRepository, RepairTicketRepository>();
         services.AddScoped<ISaleRepository, SaleRepository>();
+
+        // Security & Cryptography Services
+        services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
+        services.AddSingleton<IPasswordHasher, PasswordHasher>();
+        services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
+
+        // HttpContextAccessor & User/Auth Services
+        services.AddHttpContextAccessor();
+        services.AddScoped<ICurrentUserService, CurrentUserService>();
+        services.AddScoped<IAuthService, AuthService>();
 
         return services;
     }

@@ -12,6 +12,7 @@ namespace BatteryEC.Domain.Entities.Identity;
 public class User : BaseEntity, IAggregateRoot
 {
     public long UserId { get => Id; set => Id = value; }
+    public string Username { get; set; } = string.Empty;
     public string? Email { get; set; }
     public string? Phone { get; set; }
     public string PasswordHash { get; set; } = string.Empty;

@@ -1,11 +1,13 @@
 using BatteryEC.Application.Common.Models;
 using BatteryEC.Application.DTOs.Catalog;
 using BatteryEC.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace BatteryEC.WebApi.Controllers;
 
+[AllowAnonymous]
 [ApiController]
 [Route("api/[controller]")]
 public class ProductsController : ControllerBase

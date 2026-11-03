@@ -1,10 +1,13 @@
 using BatteryEC.Application.Common.Interfaces;
 using BatteryEC.Application.Common.Models;
 using BatteryEC.Application.DTOs.Reports;
+using BatteryEC.Domain.Enums;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BatteryEC.WebApi.Controllers;
 
+[Authorize(Roles = RoleType.Admin)]
 [ApiController]
 [Route("api/[controller]")]
 public class ReportsController : ControllerBase

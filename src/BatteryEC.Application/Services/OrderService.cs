@@ -102,7 +102,17 @@ public class OrderService : IOrderService
     public async Task<bool> ConfirmOrderAsync(long orderId, long confirmedByUserId, CancellationToken cancellationToken = default)
     {
         var order = await _orderRepository.GetWithDetailsAsync(orderId, cancellationToken);
-        if (order == null || order.OrderStatus != "PendingConfirmation")
+        if (order == null)
+        {
+            return false;
+        }
+
+        if (order.OrderStatus == "Confirmed")
+        {
+            return true; // Idempotent success
+        }
+
+        if (order.OrderStatus != "PendingConfirmation")
         {
             return false;
         }

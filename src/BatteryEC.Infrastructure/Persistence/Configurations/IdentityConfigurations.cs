@@ -11,8 +11,8 @@ public class RoleConfiguration : IEntityTypeConfiguration<Role>
         builder.ToTable("roles");
         builder.HasKey(r => r.RoleId);
         builder.Property(r => r.RoleId).UseIdentityAlwaysColumn();
-        builder.Property(r => r.Name).HasMaxLength(30).IsRequired();
-        builder.Property(r => r.Description).HasMaxLength(200);
+        builder.Property(r => r.Name).HasColumnName("role_name").HasMaxLength(50).IsRequired();
+        builder.Property(r => r.Description).HasMaxLength(255);
         builder.HasIndex(r => r.Name).IsUnique();
     }
 }
@@ -24,14 +24,20 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.ToTable("users");
         builder.HasKey(u => u.UserId);
         builder.Property(u => u.UserId).UseIdentityAlwaysColumn();
+        builder.Property(u => u.Username).HasMaxLength(50).IsRequired();
         builder.Property(u => u.Email).HasMaxLength(254);
         builder.Property(u => u.Phone).HasMaxLength(20);
         builder.Property(u => u.PasswordHash).HasMaxLength(500).IsRequired();
         builder.Property(u => u.FullName).HasMaxLength(150).IsRequired();
         builder.Property(u => u.AvatarUrl).HasMaxLength(1000);
         builder.Property(u => u.RefreshToken).HasMaxLength(500);
+        builder.Property(u => u.RefreshTokenExpiryTime);
         builder.Property(u => u.IsActive).HasDefaultValue(true);
 
+        builder.Ignore(u => u.EmailVerifiedAt);
+        builder.Ignore(u => u.PhoneVerifiedAt);
+
+        builder.HasIndex(u => u.Username).IsUnique();
         builder.HasIndex(u => u.Email).IsUnique().HasFilter("email IS NOT NULL");
         builder.HasIndex(u => u.Phone).IsUnique().HasFilter("phone IS NOT NULL");
     }

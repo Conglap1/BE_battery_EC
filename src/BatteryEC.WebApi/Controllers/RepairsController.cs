@@ -1,10 +1,13 @@
 using BatteryEC.Application.Common.Models;
 using BatteryEC.Application.DTOs.Repairs;
 using BatteryEC.Application.Services;
+using BatteryEC.Domain.Enums;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BatteryEC.WebApi.Controllers;
 
+[Authorize(Roles = $"{RoleType.Technician},{RoleType.Admin}")]
 [ApiController]
 [Route("api/[controller]")]
 public class RepairsController : ControllerBase

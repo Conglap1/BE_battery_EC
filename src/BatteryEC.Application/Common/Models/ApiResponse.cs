@@ -27,6 +27,10 @@ public class ApiResponse<T>
         Message = message,
         Errors = errors.ToList()
     };
+
+    public static ApiResponse<T> SuccessResult(T data, string? message = null) => Ok(data, message);
+    public static ApiResponse<T> FailureResult(string error, string? message = null) => Fail(error, message);
+    public static ApiResponse<T> FailureResult(IEnumerable<string> errors, string? message = null) => Fail(errors, message);
 }
 
 public class ApiResponse : ApiResponse<object>
@@ -43,4 +47,7 @@ public class ApiResponse : ApiResponse<object>
         Message = message,
         Errors = new List<string> { error }
     };
+
+    public static ApiResponse SuccessResult(string? message = null) => Ok(message);
+    public static new ApiResponse FailureResult(string error, string? message = null) => Fail(error, message);
 }
