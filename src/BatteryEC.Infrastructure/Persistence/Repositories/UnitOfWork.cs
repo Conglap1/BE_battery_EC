@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace BatteryEC.Infrastructure.Persistence.Repositories;
 
-public class UnitOfWork : IUnitOfWork
+public class UnitOfWork : IUnitOfWork, IDisposable, IAsyncDisposable
 {
     private readonly BatteryDbContext _context;
     private IDbContextTransaction? _currentTransaction;
@@ -70,6 +70,24 @@ public class UnitOfWork : IUnitOfWork
                 await _currentTransaction.DisposeAsync();
                 _currentTransaction = null;
             }
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_currentTransaction != null)
+        {
+            _currentTransaction.Dispose();
+            _currentTransaction = null;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_currentTransaction != null)
+        {
+            await _currentTransaction.DisposeAsync();
+            _currentTransaction = null;
         }
     }
 }

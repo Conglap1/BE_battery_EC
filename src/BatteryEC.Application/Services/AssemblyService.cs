@@ -3,6 +3,7 @@ using BatteryEC.Domain.Entities.Catalog;
 using BatteryEC.Domain.Entities.Inventory;
 using BatteryEC.Domain.Entities.Production;
 using BatteryEC.Domain.Repositories;
+using Microsoft.EntityFrameworkCore;
 
 namespace BatteryEC.Application.Services;
 
@@ -76,6 +77,7 @@ public class AssemblyService : IAssemblyService
                 if (compInventory != null)
                 {
                     compInventory.QuantityOnHand -= item.QuantityConsumed;
+                    compInventory.Version++;
                     compInventory.UpdatedAt = DateTime.UtcNow;
                     _inventoryRepository.Update(compInventory);
                 }
@@ -110,6 +112,7 @@ public class AssemblyService : IAssemblyService
                     QuantityOnHand = dto.QuantityProduced,
                     QuantityReserved = 0,
                     ReorderLevel = 0,
+                    Version = 1,
                     UpdatedAt = DateTime.UtcNow
                 };
                 await _inventoryRepository.AddAsync(bundleInventory, cancellationToken);
@@ -117,6 +120,7 @@ public class AssemblyService : IAssemblyService
             else
             {
                 bundleInventory.QuantityOnHand += dto.QuantityProduced;
+                bundleInventory.Version++;
                 bundleInventory.UpdatedAt = DateTime.UtcNow;
                 _inventoryRepository.Update(bundleInventory);
             }
@@ -136,6 +140,11 @@ public class AssemblyService : IAssemblyService
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
             return MapToDto(order);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw new InvalidOperationException("Stock conflict detected, please retry.");
         }
         catch
         {

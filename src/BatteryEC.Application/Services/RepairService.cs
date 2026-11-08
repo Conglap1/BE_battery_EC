@@ -2,6 +2,7 @@ using BatteryEC.Application.DTOs.Repairs;
 using BatteryEC.Domain.Entities.Catalog;
 using BatteryEC.Domain.Entities.Services;
 using BatteryEC.Domain.Repositories;
+using Microsoft.EntityFrameworkCore;
 
 namespace BatteryEC.Application.Services;
 
@@ -62,14 +63,25 @@ public class RepairService : IRepairService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
+            if (quantity <= 0)
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                return false;
+            }
+
             var ticket = await _repairTicketRepository.GetWithItemsAsync(ticketId, cancellationToken);
             if (ticket == null || ticket.TicketStatus == "Completed" || ticket.TicketStatus == "Delivered")
             {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                 return false;
             }
 
             var variant = await _variantRepository.GetByIdAsync(productVariantId, cancellationToken);
-            if (variant == null) return false;
+            if (variant == null)
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                return false;
+            }
 
             decimal lineTotal = quantity * unitPrice;
             ticket.Items.Add(new RepairTicketItem
@@ -89,6 +101,7 @@ public class RepairService : IRepairService
             if (inventory != null)
             {
                 inventory.QuantityOnHand -= quantity;
+                inventory.Version++;
                 inventory.UpdatedAt = DateTime.UtcNow;
                 _inventoryRepository.Update(inventory);
             }
@@ -110,6 +123,11 @@ public class RepairService : IRepairService
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
             return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw new InvalidOperationException("Stock conflict detected, please retry.");
         }
         catch
         {

@@ -2,6 +2,7 @@ using BatteryEC.Application.DTOs.Orders;
 using BatteryEC.Domain.Entities.Catalog;
 using BatteryEC.Domain.Entities.Sales;
 using BatteryEC.Domain.Repositories;
+using Microsoft.EntityFrameworkCore;
 
 namespace BatteryEC.Application.Services;
 
@@ -26,6 +27,16 @@ public class OrderService : IOrderService
 
     public async Task<OrderDto> CreateOrderAsync(CreateOrderDto dto, CancellationToken cancellationToken = default)
     {
+        if (dto == null)
+        {
+            throw new ArgumentNullException(nameof(dto));
+        }
+
+        if (dto.Items == null || !dto.Items.Any())
+        {
+            throw new InvalidOperationException("Order must contain at least one item.");
+        }
+
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -46,8 +57,21 @@ public class OrderService : IOrderService
             decimal subtotal = 0;
             foreach (var item in dto.Items)
             {
+                if (item.Quantity <= 0)
+                {
+                    throw new InvalidOperationException($"Invalid quantity {item.Quantity} for variant #{item.ProductVariantId}. Quantity must be positive.");
+                }
+
                 var variant = await _variantRepository.GetByIdAsync(item.ProductVariantId, cancellationToken)
                     ?? throw new InvalidOperationException($"Product variant #{item.ProductVariantId} not found.");
+
+                // Concurrency and stock check P0.6: Validate available stock before reservation
+                var inventory = await _inventoryRepository.GetByVariantIdAsync(item.ProductVariantId, cancellationToken);
+                if (inventory == null || inventory.AvailableStock < item.Quantity)
+                {
+                    var available = inventory?.AvailableStock ?? 0;
+                    throw new InvalidOperationException($"Insufficient available stock for variant #{item.ProductVariantId}. Requested: {item.Quantity}, Available: {available}.");
+                }
 
                 decimal lineTotal = item.Quantity * variant.SellingPrice;
                 subtotal += lineTotal;
@@ -65,14 +89,11 @@ public class OrderService : IOrderService
                     LineTotal = lineTotal
                 });
 
-                // Reserve inventory for online order
-                var inventory = await _inventoryRepository.GetByVariantIdAsync(item.ProductVariantId, cancellationToken);
-                if (inventory != null)
-                {
-                    inventory.QuantityReserved += item.Quantity;
-                    inventory.UpdatedAt = DateTime.UtcNow;
-                    _inventoryRepository.Update(inventory);
-                }
+                // Reserve inventory for online order and bump Version for optimistic concurrency
+                inventory.QuantityReserved += item.Quantity;
+                inventory.Version++;
+                inventory.UpdatedAt = DateTime.UtcNow;
+                _inventoryRepository.Update(inventory);
             }
 
             order.Subtotal = subtotal;
@@ -83,6 +104,11 @@ public class OrderService : IOrderService
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             return MapToDto(order);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw new InvalidOperationException("Stock conflict detected, please retry.");
         }
         catch
         {
@@ -157,6 +183,7 @@ public class OrderService : IOrderService
             var order = await _orderRepository.GetWithDetailsAsync(orderId, cancellationToken);
             if (order == null || order.OrderStatus != "Shipped")
             {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                 return false;
             }
 
@@ -172,6 +199,7 @@ public class OrderService : IOrderService
                 {
                     inventory.QuantityOnHand -= item.Quantity;
                     inventory.QuantityReserved = Math.Max(0, inventory.QuantityReserved - item.Quantity);
+                    inventory.Version++;
                     inventory.UpdatedAt = DateTime.UtcNow;
                     _inventoryRepository.Update(inventory);
                 }
@@ -195,6 +223,11 @@ public class OrderService : IOrderService
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
             return true;
         }
+        catch (DbUpdateConcurrencyException)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw new InvalidOperationException("Stock conflict detected, please retry.");
+        }
         catch
         {
             await _unitOfWork.RollbackTransactionAsync(cancellationToken);
@@ -210,6 +243,7 @@ public class OrderService : IOrderService
             var order = await _orderRepository.GetWithDetailsAsync(orderId, cancellationToken);
             if (order == null || order.OrderStatus == "Cancelled" || order.OrderStatus == "Completed")
             {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                 return false;
             }
 
@@ -223,6 +257,7 @@ public class OrderService : IOrderService
                 if (inventory != null)
                 {
                     inventory.QuantityReserved = Math.Max(0, inventory.QuantityReserved - item.Quantity);
+                    inventory.Version++;
                     inventory.UpdatedAt = DateTime.UtcNow;
                     _inventoryRepository.Update(inventory);
                 }
@@ -231,6 +266,11 @@ public class OrderService : IOrderService
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
             return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw new InvalidOperationException("Stock conflict detected, please retry.");
         }
         catch
         {

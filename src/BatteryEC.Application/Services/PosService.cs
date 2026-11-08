@@ -3,6 +3,7 @@ using BatteryEC.Domain.Entities.Catalog;
 using BatteryEC.Domain.Entities.Inventory;
 using BatteryEC.Domain.Entities.Pos;
 using BatteryEC.Domain.Repositories;
+using Microsoft.EntityFrameworkCore;
 
 namespace BatteryEC.Application.Services;
 
@@ -70,6 +71,7 @@ public class PosService : IPosService
                 if (inventory != null)
                 {
                     inventory.QuantityOnHand -= item.Quantity;
+                    inventory.Version++;
                     inventory.UpdatedAt = DateTime.UtcNow;
                     _inventoryRepository.Update(inventory);
                 }
@@ -97,6 +99,11 @@ public class PosService : IPosService
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             return MapToDto(sale);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw new InvalidOperationException("Stock conflict detected, please retry.");
         }
         catch
         {

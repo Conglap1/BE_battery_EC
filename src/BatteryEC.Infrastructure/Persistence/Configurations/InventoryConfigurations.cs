@@ -15,7 +15,7 @@ public class InventoryConfiguration : IEntityTypeConfiguration<BatteryEC.Domain.
         builder.Property(i => i.QuantityReserved).HasDefaultValue(0);
         builder.Property(i => i.ReorderLevel).HasDefaultValue(0);
         builder.Property(i => i.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
-        builder.Property(i => i.Version).HasDefaultValue(1);
+        builder.Property(i => i.Version).HasDefaultValue(1).IsConcurrencyToken();
 
         builder.Ignore(i => i.AvailableStock);
 
