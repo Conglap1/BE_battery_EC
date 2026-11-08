@@ -133,7 +133,7 @@ public class ControllerRbacAttributeTests
     }
 
     [Fact]
-    public async Task OrdersController_CreateOrder_ShouldPreserveExplicitUserId_WhenGreaterThanZero()
+    public async Task OrdersController_CreateOrder_ShouldIgnoreClientUserId_AndEnforceCurrentUserServiceUserId()
     {
         // Arrange
         CreateOrderDto? capturedDto = null;
@@ -156,7 +156,7 @@ public class ControllerRbacAttributeTests
 
         var dto = new CreateOrderDto
         {
-            UserId = 99,
+            UserId = 99, // Insecure client attempt to impersonate another user
             RecipientName = "Customer Explicit",
             RecipientPhone = "0901234567",
             ShippingAddress = "456 Avenue",
@@ -166,13 +166,14 @@ public class ControllerRbacAttributeTests
         // Act
         var result = await controller.CreateOrder(dto, CancellationToken.None);
 
-        // Assert
+        // Assert - Security P0.3: client UserId must be completely ignored and overridden by JWT identity
         Assert.NotNull(result);
         var createdResult = Assert.IsType<CreatedAtActionResult>(result.Result);
         var response = Assert.IsType<ApiResponse<OrderDto>>(createdResult.Value);
         Assert.True(response.Success);
         Assert.NotNull(capturedDto);
-        Assert.Equal(99, capturedDto.UserId);
+        Assert.Equal(42, capturedDto.UserId);
+        Assert.Equal(42, response.Data?.UserId);
     }
 
     // =========================================================================

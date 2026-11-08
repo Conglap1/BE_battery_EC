@@ -1,3 +1,4 @@
+using BatteryEC.Application.Common.Interfaces;
 using BatteryEC.Application.Common.Models;
 using BatteryEC.Application.DTOs.Assembly;
 using BatteryEC.Application.Services;
@@ -13,22 +14,29 @@ namespace BatteryEC.WebApi.Controllers;
 public class AssemblyController : ControllerBase
 {
     private readonly IAssemblyService _assemblyService;
+    private readonly ICurrentUserService _currentUserService;
 
-    public AssemblyController(IAssemblyService assemblyService)
+    public AssemblyController(IAssemblyService assemblyService, ICurrentUserService currentUserService)
     {
         _assemblyService = assemblyService;
+        _currentUserService = currentUserService;
     }
 
     [HttpPost("execute")]
     public async Task<ActionResult<ApiResponse<AssemblyOrderDto>>> ExecuteAssembly(
         [FromBody] CreateAssemblyOrderDto dto,
-        [FromQuery] long userId = 1,
         CancellationToken cancellationToken = default)
     {
         try
         {
+            // Security P0.4: Actor identity extracted from authenticated JWT context
+            var userId = _currentUserService.UserId ?? throw new UnauthorizedAccessException("User is not authenticated");
             var order = await _assemblyService.ExecuteAssemblyOrderAsync(dto, userId, cancellationToken);
             return CreatedAtAction(nameof(GetAssemblyOrderByCode), new { code = order.AssemblyCode }, ApiResponse<AssemblyOrderDto>.Ok(order, "Assembly order executed and finished goods capitalized."));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(ApiResponse<AssemblyOrderDto>.Fail(ex.Message));
         }
         catch (Exception ex)
         {

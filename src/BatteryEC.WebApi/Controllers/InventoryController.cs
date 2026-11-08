@@ -1,3 +1,4 @@
+using BatteryEC.Application.Common.Interfaces;
 using BatteryEC.Application.Common.Models;
 using BatteryEC.Application.DTOs.Inventory;
 using BatteryEC.Application.Services;
@@ -13,10 +14,12 @@ namespace BatteryEC.WebApi.Controllers;
 public class InventoryController : ControllerBase
 {
     private readonly IInventoryService _inventoryService;
+    private readonly ICurrentUserService _currentUserService;
 
-    public InventoryController(IInventoryService inventoryService)
+    public InventoryController(IInventoryService inventoryService, ICurrentUserService currentUserService)
     {
         _inventoryService = inventoryService;
+        _currentUserService = currentUserService;
     }
 
     [HttpGet("{variantId:long}")]
@@ -32,15 +35,24 @@ public class InventoryController : ControllerBase
     }
 
     [HttpPost("adjust")]
-    public async Task<ActionResult<ApiResponse<bool>>> AdjustStock([FromBody] StockAdjustmentDto dto, [FromQuery] long userId = 1, CancellationToken cancellationToken = default)
+    public async Task<ActionResult<ApiResponse<bool>>> AdjustStock([FromBody] StockAdjustmentDto dto, CancellationToken cancellationToken = default)
     {
-        var success = await _inventoryService.AdjustStockAsync(dto, userId, cancellationToken);
-        if (!success)
+        try
         {
-            return BadRequest(ApiResponse<bool>.Fail("Stock adjustment failed. Insufficient stock or invalid adjustment."));
-        }
+            // Security P0.4: Actor identity extracted from authenticated JWT context
+            var userId = _currentUserService.UserId ?? throw new UnauthorizedAccessException("User is not authenticated");
+            var success = await _inventoryService.AdjustStockAsync(dto, userId, cancellationToken);
+            if (!success)
+            {
+                return BadRequest(ApiResponse<bool>.Fail("Stock adjustment failed. Insufficient stock or invalid adjustment."));
+            }
 
-        return Ok(ApiResponse<bool>.Ok(true, "Stock adjusted successfully."));
+            return Ok(ApiResponse<bool>.Ok(true, "Stock adjusted successfully."));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(ApiResponse<bool>.Fail(ex.Message));
+        }
     }
 
     [HttpPost("reserve")]

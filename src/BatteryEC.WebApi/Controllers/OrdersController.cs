@@ -4,6 +4,7 @@ using BatteryEC.Application.DTOs.Orders;
 using BatteryEC.Application.Services;
 using BatteryEC.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BatteryEC.WebApi.Controllers;
@@ -28,13 +29,16 @@ public class OrdersController : ControllerBase
     {
         try
         {
-            if (dto.UserId <= 0)
-            {
-                dto.UserId = _currentUserService.UserId ?? 1;
-            }
+            // Security P0.3: Never trust client-supplied UserId; enforce identity from authenticated JWT token
+            var actorId = _currentUserService.UserId ?? throw new UnauthorizedAccessException("User is not authenticated");
+            dto.UserId = actorId;
 
             var order = await _orderService.CreateOrderAsync(dto, cancellationToken);
             return CreatedAtAction(nameof(GetOrderByCode), new { code = order.OrderCode }, ApiResponse<OrderDto>.Ok(order, "Order placed successfully."));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(ApiResponse<OrderDto>.Fail(ex.Message));
         }
         catch (Exception ex)
         {
@@ -46,27 +50,50 @@ public class OrdersController : ControllerBase
     [HttpGet("{code}")]
     public async Task<ActionResult<ApiResponse<OrderDto>>> GetOrderByCode(string code, CancellationToken cancellationToken)
     {
-        var order = await _orderService.GetOrderByCodeAsync(code, cancellationToken);
-        if (order == null)
+        try
         {
-            return NotFound(ApiResponse<OrderDto>.Fail($"Order '{code}' not found."));
-        }
+            var currentUserId = _currentUserService.UserId ?? throw new UnauthorizedAccessException("User is not authenticated");
+            var order = await _orderService.GetOrderByCodeAsync(code, cancellationToken);
+            if (order == null)
+            {
+                return NotFound(ApiResponse<OrderDto>.Fail($"Order '{code}' not found."));
+            }
 
-        return Ok(ApiResponse<OrderDto>.Ok(order));
+            // Security P0.3: Order ownership verification
+            var isElevated = _currentUserService.IsInRole(RoleType.Admin) || _currentUserService.IsInRole(RoleType.StoreManager);
+            if (!isElevated && order.UserId != currentUserId)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<OrderDto>.Fail("You do not have permission to view this order."));
+            }
+
+            return Ok(ApiResponse<OrderDto>.Ok(order));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(ApiResponse<OrderDto>.Fail(ex.Message));
+        }
     }
 
     [Authorize(Roles = $"{RoleType.StoreManager},{RoleType.Admin}")]
     [HttpPost("{id:long}/confirm")]
-    public async Task<ActionResult<ApiResponse<bool>>> ConfirmOrder(long id, [FromQuery] long userId = 1, CancellationToken cancellationToken = default)
+    public async Task<ActionResult<ApiResponse<bool>>> ConfirmOrder(long id, CancellationToken cancellationToken = default)
     {
-        var effectiveUserId = userId > 0 ? userId : (_currentUserService.UserId ?? 1);
-        var success = await _orderService.ConfirmOrderAsync(id, effectiveUserId, cancellationToken);
-        if (!success)
+        try
         {
-            return BadRequest(ApiResponse<bool>.Fail($"Unable to confirm order #{id}."));
-        }
+            // Security P0.4: Actor ID extraction from authenticated JWT context
+            var actorId = _currentUserService.UserId ?? throw new UnauthorizedAccessException("User is not authenticated");
+            var success = await _orderService.ConfirmOrderAsync(id, actorId, cancellationToken);
+            if (!success)
+            {
+                return BadRequest(ApiResponse<bool>.Fail($"Unable to confirm order #{id}."));
+            }
 
-        return Ok(ApiResponse<bool>.Ok(true, "Order confirmed successfully."));
+            return Ok(ApiResponse<bool>.Ok(true, "Order confirmed successfully."));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(ApiResponse<bool>.Fail(ex.Message));
+        }
     }
 
     [Authorize(Roles = $"{RoleType.StoreManager},{RoleType.Admin}")]
@@ -75,18 +102,25 @@ public class OrdersController : ControllerBase
         long id,
         [FromQuery] string carrier = "GHTK",
         [FromQuery] string trackingCode = "",
-        [FromQuery] long userId = 1,
         CancellationToken cancellationToken = default)
     {
-        var effectiveUserId = userId > 0 ? userId : (_currentUserService.UserId ?? 1);
-        var code = string.IsNullOrWhiteSpace(trackingCode) ? $"TRACK-{DateTime.UtcNow.Ticks}" : trackingCode;
-        var success = await _orderService.ShipOrderAsync(id, carrier, code, effectiveUserId, cancellationToken);
-        if (!success)
+        try
         {
-            return BadRequest(ApiResponse<bool>.Fail($"Unable to mark order #{id} as shipped. Ensure status is Confirmed or Processing."));
-        }
+            // Security P0.4: Actor ID extraction from authenticated JWT context
+            var actorId = _currentUserService.UserId ?? throw new UnauthorizedAccessException("User is not authenticated");
+            var code = string.IsNullOrWhiteSpace(trackingCode) ? $"TRACK-{DateTime.UtcNow.Ticks}" : trackingCode;
+            var success = await _orderService.ShipOrderAsync(id, carrier, code, actorId, cancellationToken);
+            if (!success)
+            {
+                return BadRequest(ApiResponse<bool>.Fail($"Unable to mark order #{id} as shipped. Ensure status is Confirmed or Processing."));
+            }
 
-        return Ok(ApiResponse<bool>.Ok(true, "Order handed over to carrier successfully."));
+            return Ok(ApiResponse<bool>.Ok(true, "Order handed over to carrier successfully."));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(ApiResponse<bool>.Fail(ex.Message));
+        }
     }
 
     [Authorize(Roles = $"{RoleType.StoreManager},{RoleType.Admin}")]

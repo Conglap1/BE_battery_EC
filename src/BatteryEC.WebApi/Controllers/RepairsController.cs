@@ -1,3 +1,4 @@
+using BatteryEC.Application.Common.Interfaces;
 using BatteryEC.Application.Common.Models;
 using BatteryEC.Application.DTOs.Repairs;
 using BatteryEC.Application.Services;
@@ -13,22 +14,29 @@ namespace BatteryEC.WebApi.Controllers;
 public class RepairsController : ControllerBase
 {
     private readonly IRepairService _repairService;
+    private readonly ICurrentUserService _currentUserService;
 
-    public RepairsController(IRepairService repairService)
+    public RepairsController(IRepairService repairService, ICurrentUserService currentUserService)
     {
         _repairService = repairService;
+        _currentUserService = currentUserService;
     }
 
     [HttpPost]
     public async Task<ActionResult<ApiResponse<RepairTicketDto>>> CreateRepairTicket(
         [FromBody] CreateRepairTicketDto dto,
-        [FromQuery] long userId = 1,
         CancellationToken cancellationToken = default)
     {
         try
         {
+            // Security P0.4: Actor identity extracted from authenticated JWT context
+            var userId = _currentUserService.UserId ?? throw new UnauthorizedAccessException("User is not authenticated");
             var ticket = await _repairService.CreateRepairTicketAsync(dto, userId, cancellationToken);
             return CreatedAtAction(nameof(GetRepairTicketByCode), new { code = ticket.TicketCode }, ApiResponse<RepairTicketDto>.Ok(ticket, "Repair intake ticket created."));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(ApiResponse<RepairTicketDto>.Fail(ex.Message));
         }
         catch (Exception ex)
         {
@@ -54,16 +62,24 @@ public class RepairsController : ControllerBase
         [FromQuery] long variantId,
         [FromQuery] int quantity = 1,
         [FromQuery] decimal unitPrice = 0,
-        [FromQuery] long userId = 1,
         CancellationToken cancellationToken = default)
     {
-        var success = await _repairService.AddRepairItemAsync(id, variantId, quantity, unitPrice, userId, cancellationToken);
-        if (!success)
+        try
         {
-            return BadRequest(ApiResponse<bool>.Fail($"Unable to add component #{variantId} to repair ticket #{id}."));
-        }
+            // Security P0.4: Actor identity extracted from authenticated JWT context
+            var userId = _currentUserService.UserId ?? throw new UnauthorizedAccessException("User is not authenticated");
+            var success = await _repairService.AddRepairItemAsync(id, variantId, quantity, unitPrice, userId, cancellationToken);
+            if (!success)
+            {
+                return BadRequest(ApiResponse<bool>.Fail($"Unable to add component #{variantId} to repair ticket #{id}."));
+            }
 
-        return Ok(ApiResponse<bool>.Ok(true, "Spare part consumed from inventory and added to repair ticket."));
+            return Ok(ApiResponse<bool>.Ok(true, "Spare part consumed from inventory and added to repair ticket."));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(ApiResponse<bool>.Fail(ex.Message));
+        }
     }
 
     [HttpPut("{id:long}/status")]
