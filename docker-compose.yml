@@ -13,6 +13,7 @@ services:
       - "5432:5432"
     volumes:
       - battery_ec_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
 
 volumes:
   battery_ec_data:

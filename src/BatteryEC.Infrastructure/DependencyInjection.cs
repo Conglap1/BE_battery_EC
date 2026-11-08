@@ -43,8 +43,12 @@ public static class DependencyInjection
         services.AddScoped<IAssemblyOrderRepository, AssemblyOrderRepository>();
         services.AddScoped<IInventoryRepository, InventoryRepository>();
         services.AddScoped<IOrderRepository, OrderRepository>();
+        services.AddScoped<IProductRepository, ProductRepository>();
         services.AddScoped<IRepairTicketRepository, RepairTicketRepository>();
         services.AddScoped<ISaleRepository, SaleRepository>();
+
+        // System Clock & DateTime Provider
+        services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
 
         // Security & Cryptography Services
         services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));

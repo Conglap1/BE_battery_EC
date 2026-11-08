@@ -40,12 +40,12 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
         builder.Property(p => p.Slug).HasMaxLength(220).IsRequired();
         builder.Property(p => p.Description).HasColumnType("text");
         builder.Property(p => p.IsActive).HasDefaultValue(true);
+        builder.Property(p => p.Brand).HasColumnName("brand").HasMaxLength(100);
+        builder.Property(p => p.ShortDescription).HasColumnName("short_description").HasMaxLength(500);
+        builder.Property(p => p.IsFeatured).HasColumnName("is_featured").HasDefaultValue(false);
 
         builder.Ignore(p => p.Name);
-        builder.Ignore(p => p.Brand);
-        builder.Ignore(p => p.ShortDescription);
         builder.Ignore(p => p.IsPublished);
-        builder.Ignore(p => p.IsFeatured);
         builder.Ignore(p => p.IsDeleted);
 
         builder.HasIndex(p => p.Slug).IsUnique();
@@ -73,11 +73,11 @@ public class ProductVariantConfiguration : IEntityTypeConfiguration<ProductVaria
         builder.Property(pv => pv.WarrantyMonths).HasDefaultValue(0);
         builder.Property(pv => pv.IsBundle).HasDefaultValue(false);
         builder.Property(pv => pv.IsActive).HasDefaultValue(true);
+        builder.Property(pv => pv.OptionSummary).HasColumnName("option_summary").HasMaxLength(255);
+        builder.Property(pv => pv.Unit).HasColumnName("unit").HasMaxLength(50).HasDefaultValue("Cái");
+        builder.Property(pv => pv.ImageUrl).HasColumnName("image_url").HasMaxLength(500);
 
         builder.Ignore(pv => pv.SellingPrice);
-        builder.Ignore(pv => pv.OptionSummary);
-        builder.Ignore(pv => pv.Unit);
-        builder.Ignore(pv => pv.ImageUrl);
 
         builder.HasIndex(pv => pv.SKU).IsUnique();
         builder.HasIndex(pv => pv.ProductId);
