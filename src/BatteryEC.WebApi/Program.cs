@@ -29,9 +29,25 @@ builder.Services.AddCors(options =>
 var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>()
     ?? throw new InvalidOperationException("Jwt configuration section 'Jwt' was not found or is invalid.");
 
+// Support loading secret key from environment variable (JWT_SECRET_KEY or Jwt__SecretKey)
 if (string.IsNullOrWhiteSpace(jwtSettings.SecretKey))
 {
-    throw new InvalidOperationException("JWT SecretKey is not configured in appsettings.");
+    jwtSettings.SecretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY")
+        ?? Environment.GetEnvironmentVariable("Jwt__SecretKey")
+        ?? string.Empty;
+}
+
+if (string.IsNullOrWhiteSpace(jwtSettings.SecretKey))
+{
+    if (builder.Environment.IsDevelopment())
+    {
+        Console.WriteLine("[SECURITY WARNING] No JWT SecretKey configured in User Secrets or environment variable (JWT_SECRET_KEY). Using an ephemeral development key.");
+        jwtSettings.SecretKey = "DevOnlyEphemeralSecretKeyForLocalTestingMin32Chars2026!";
+    }
+    else
+    {
+        throw new InvalidOperationException("JWT SecretKey is required and must be provided via environment variables (JWT_SECRET_KEY) or secret manager.");
+    }
 }
 
 builder.Services.AddAuthentication(options =>

@@ -5,6 +5,7 @@
     <RollForward>LatestMajor</RollForward>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>battery-ec-webapi-secrets-2026</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
