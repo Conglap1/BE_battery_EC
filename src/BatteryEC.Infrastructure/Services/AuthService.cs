@@ -313,4 +313,57 @@ public class AuthService : IAuthService
             CreatedAt = user.CreatedAt
         };
     }
+
+    public async Task LogoutAsync(string? refreshToken, long? userId = null, CancellationToken cancellationToken = default)
+    {
+        var cleanToken = refreshToken?.Trim();
+
+        User? user = null;
+
+        // 1. Try to find user by refreshToken if provided
+        if (!string.IsNullOrWhiteSpace(cleanToken))
+        {
+            user = await _context.Users
+                .FirstOrDefaultAsync(u => u.RefreshToken != null && u.RefreshToken.Contains(cleanToken), cancellationToken);
+        }
+
+        // 2. Fall back to finding user by userId if provided
+        if (user == null && userId.HasValue)
+        {
+            user = await _context.Users
+                .FirstOrDefaultAsync(u => u.UserId == userId.Value, cancellationToken);
+        }
+
+        if (user == null)
+        {
+            return; // No active user session matching token or userId
+        }
+
+        // 3. Revoke the token(s)
+        if (!string.IsNullOrWhiteSpace(cleanToken))
+        {
+            var tokensList = (user.RefreshToken ?? "")
+                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(t => !string.Equals(t, cleanToken, StringComparison.Ordinal))
+                .ToList();
+
+            if (tokensList.Count > 0)
+            {
+                user.RefreshToken = string.Join(";", tokensList);
+            }
+            else
+            {
+                user.RefreshToken = null;
+                user.RefreshTokenExpiryTime = null;
+            }
+        }
+        else
+        {
+            user.RefreshToken = null;
+            user.RefreshTokenExpiryTime = null;
+        }
+
+        user.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync(cancellationToken);
+    }
 }

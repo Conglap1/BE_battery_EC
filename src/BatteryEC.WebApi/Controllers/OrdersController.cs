@@ -96,7 +96,7 @@ public class OrdersController : ControllerBase
         }
     }
 
-    [Authorize(Roles = $"{RoleType.StoreManager},{RoleType.Admin}")]
+    [Authorize(Roles = $"{RoleType.WarehouseStaff},{RoleType.StoreManager},{RoleType.Admin}")]
     [HttpPost("{id:long}/ship")]
     public async Task<ActionResult<ApiResponse<bool>>> ShipOrder(
         long id,

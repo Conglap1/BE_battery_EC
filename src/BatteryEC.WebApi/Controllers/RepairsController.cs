@@ -88,9 +88,10 @@ public class RepairsController : ControllerBase
         [FromQuery] string status,
         [FromQuery] string? solutionNote,
         [FromQuery] decimal? finalCost,
+        [FromQuery] int? warrantyMonths,
         CancellationToken cancellationToken)
     {
-        var success = await _repairService.UpdateStatusAsync(id, status, solutionNote, finalCost, cancellationToken);
+        var success = await _repairService.UpdateStatusAsync(id, status, solutionNote, finalCost, warrantyMonths, cancellationToken);
         if (!success)
         {
             return BadRequest(ApiResponse<bool>.Fail($"Unable to update status for repair ticket #{id}."));

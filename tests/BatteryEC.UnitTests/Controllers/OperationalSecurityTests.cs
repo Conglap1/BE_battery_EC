@@ -474,7 +474,7 @@ public class OperationalSecurityTests
             return Task.FromResult(true);
         }
 
-        public Task<bool> UpdateStatusAsync(long ticketId, string status, string? solutionNote, decimal? finalCost, CancellationToken cancellationToken = default) =>
+        public Task<bool> UpdateStatusAsync(long ticketId, string status, string? solutionNote, decimal? finalCost, int? warrantyMonths = null, CancellationToken cancellationToken = default) =>
             Task.FromResult(true);
     }
 

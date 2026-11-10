@@ -294,7 +294,7 @@ public class M2Challenger2TransactionSafetyTests
         {
             ProductVariantId = 601,
             QuantityOnHand = 15,
-            QuantityReserved = 3,
+            QuantityReserved = 0,
             Version = 1
         };
         inventoryRepo.Add(inventory);
@@ -320,9 +320,9 @@ public class M2Challenger2TransactionSafetyTests
         Assert.False(uow.RollbackCalled);
         Assert.False(uow.HasActiveTransaction);
         Assert.Equal("Completed", order.OrderStatus);
-        Assert.Equal(12, inventory.QuantityOnHand);
+        Assert.Equal(15, inventory.QuantityOnHand); // Stock deducted at 3PL shipment handover (R3), not duplicated upon delivery
         Assert.Equal(0, inventory.QuantityReserved);
-        Assert.Equal(2, inventory.Version);
+        Assert.Equal(1, inventory.Version);
     }
 
     // =========================================================================

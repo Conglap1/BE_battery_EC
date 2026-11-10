@@ -186,6 +186,54 @@ public class AuthController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Logs out current user, revokes refresh token in database, and clears HttpOnly cookie.
+    /// </summary>
+    [HttpPost("logout")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<bool>>> Logout(
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] RefreshTokenRequestDto? request,
+        CancellationToken cancellationToken)
+    {
+        // Dual-channel inspection:
+        // Priority 1: HttpOnly Cookie 'refreshToken'
+        var token = Request.Cookies["refreshToken"];
+
+        // Priority 2: JSON Body 'refreshToken'
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            token = request?.RefreshToken;
+        }
+
+        long? userId = _currentUserService.UserId;
+        if (!userId.HasValue && User.Identity?.IsAuthenticated == true)
+        {
+            var subClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                        ?? User.FindFirst("sub")?.Value;
+            if (long.TryParse(subClaim, out var parsedId))
+            {
+                userId = parsedId;
+            }
+        }
+
+        await _authService.LogoutAsync(token, userId, cancellationToken);
+        DeleteRefreshTokenCookie();
+
+        return Ok(ApiResponse<bool>.Ok(true, "Logged out successfully."));
+    }
+
+    private void DeleteRefreshTokenCookie()
+    {
+        Response.Cookies.Delete("refreshToken", new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true,
+            SameSite = SameSiteMode.Strict,
+            Path = "/"
+        });
+    }
+
     private void SetRefreshTokenCookie(string? refreshToken)
     {
         if (string.IsNullOrWhiteSpace(refreshToken))

@@ -59,7 +59,9 @@ public class PurchaseReceiptItemConfiguration : IEntityTypeConfiguration<Purchas
         builder.HasKey(pri => pri.PurchaseReceiptItemId);
         builder.Property(pri => pri.PurchaseReceiptItemId).UseIdentityAlwaysColumn();
         builder.Property(pri => pri.UnitCost).HasPrecision(18, 2).IsRequired();
-        builder.Property(pri => pri.LineTotal).HasPrecision(18, 2).IsRequired();
+        builder.Property(pri => pri.LineTotal)
+            .HasPrecision(18, 2)
+            .ValueGeneratedOnAddOrUpdate();
 
         builder.HasOne(pri => pri.PurchaseReceipt)
             .WithMany(pr => pr.Items)

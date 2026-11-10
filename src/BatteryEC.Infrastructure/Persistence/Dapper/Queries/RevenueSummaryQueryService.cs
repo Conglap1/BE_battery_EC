@@ -27,9 +27,14 @@ public class RevenueSummaryQueryService : IRevenueSummaryQueryService
                 counter_completed_revenue AS CounterCompletedRevenue,
                 repair_ticket_count AS RepairTicketCount,
                 repair_completed_revenue AS RepairCompletedRevenue,
-                daily_expense_amount AS DailyExpenseAmount,
                 gross_revenue AS GrossRevenue,
-                (gross_revenue - total_cogs - daily_expense_amount) AS RevenueAfterShopExpense
+                online_completed_cogs AS OnlineCompletedCogs,
+                counter_completed_cogs AS CounterCompletedCogs,
+                repair_completed_cogs AS RepairCompletedCogs,
+                total_cogs AS TotalCogs,
+                gross_profit AS GrossProfit,
+                daily_expense_amount AS DailyExpenseAmount,
+                net_profit AS NetProfit
             FROM vw_total_revenue_summary
             WHERE (CAST(@FromDate AS DATE) IS NULL OR sale_date >= CAST(@FromDate AS DATE))
               AND (CAST(@ToDate AS DATE) IS NULL OR sale_date <= CAST(@ToDate AS DATE))
@@ -54,9 +59,14 @@ public class RevenueSummaryQueryService : IRevenueSummaryQueryService
                 COALESCE(SUM(counter_completed_revenue), 0) AS CounterCompletedRevenue,
                 COALESCE(SUM(repair_ticket_count), 0) AS RepairTicketCount,
                 COALESCE(SUM(repair_completed_revenue), 0) AS RepairCompletedRevenue,
-                COALESCE(SUM(daily_expense_amount), 0) AS DailyExpenseAmount,
                 COALESCE(SUM(gross_revenue), 0) AS GrossRevenue,
-                COALESCE(SUM(gross_revenue - total_cogs - daily_expense_amount), 0) AS RevenueAfterShopExpense
+                COALESCE(SUM(online_completed_cogs), 0) AS OnlineCompletedCogs,
+                COALESCE(SUM(counter_completed_cogs), 0) AS CounterCompletedCogs,
+                COALESCE(SUM(repair_completed_cogs), 0) AS RepairCompletedCogs,
+                COALESCE(SUM(total_cogs), 0) AS TotalCogs,
+                COALESCE(SUM(gross_profit), 0) AS GrossProfit,
+                COALESCE(SUM(daily_expense_amount), 0) AS DailyExpenseAmount,
+                COALESCE(SUM(net_profit), 0) AS NetProfit
             FROM vw_total_revenue_summary
             WHERE (CAST(@FromDate AS DATE) IS NULL OR sale_date >= CAST(@FromDate AS DATE))
               AND (CAST(@ToDate AS DATE) IS NULL OR sale_date <= CAST(@ToDate AS DATE));";

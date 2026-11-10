@@ -153,45 +153,29 @@ public class OrderService : IOrderService
 
     public async Task<bool> ShipOrderAsync(long orderId, string carrierName, string trackingCode, long shippedByUserId, CancellationToken cancellationToken = default)
     {
-        var order = await _orderRepository.GetWithDetailsAsync(orderId, cancellationToken);
-        if (order == null || (order.OrderStatus != "Confirmed" && order.OrderStatus != "Processing"))
-        {
-            return false;
-        }
-
-        order.OrderStatus = "Shipped";
-        order.Shipments.Add(new Shipment
-        {
-            OrderId = order.OrderId,
-            ShippingMethodId = 1,
-            CarrierName = carrierName,
-            TrackingNumber = trackingCode,
-            ShipmentStatus = "InTransit",
-            ShippedAt = DateTime.UtcNow
-        });
-
-        _orderRepository.Update(order);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-        return true;
-    }
-
-    public async Task<bool> CompleteOrderAsync(long orderId, CancellationToken cancellationToken = default)
-    {
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
             var order = await _orderRepository.GetWithDetailsAsync(orderId, cancellationToken);
-            if (order == null || order.OrderStatus != "Shipped")
+            if (order == null || (order.OrderStatus != "Confirmed" && order.OrderStatus != "Processing"))
             {
                 await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                 return false;
             }
 
-            order.OrderStatus = "Completed";
-            order.PaymentStatus = "Paid";
-            order.CompletedAt = DateTime.UtcNow;
+            order.OrderStatus = "Shipped";
+            order.Shipments.Add(new Shipment
+            {
+                OrderId = order.OrderId,
+                ShippingMethodId = order.ShippingMethodId ?? 1,
+                CarrierName = carrierName,
+                TrackingNumber = trackingCode,
+                ShipmentStatus = "InTransit",
+                ShippedAt = DateTime.UtcNow
+            });
+            _orderRepository.Update(order);
 
-            // Deduct real inventory and release reserved stock
+            // Two-Tier Inventory: Deduct physical inventory & release reserved stock upon 3PL handover
             foreach (var item in order.Items)
             {
                 var inventory = await _inventoryRepository.GetByVariantIdAsync(item.ProductVariantId, cancellationToken);
@@ -212,13 +196,12 @@ public class OrderService : IOrderService
                     ReferenceType = "Order",
                     ReferenceId = order.OrderId,
                     UnitCost = item.CostPrice ?? 0,
-                    CreatedByUserId = order.UserId,
-                    Note = $"Delivered order {order.OrderCode}",
+                    CreatedByUserId = shippedByUserId,
+                    Note = $"Handed to {carrierName} tracking {trackingCode}",
                     CreatedAt = DateTime.UtcNow
                 }, cancellationToken);
             }
 
-            _orderRepository.Update(order);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
             return true;
@@ -235,19 +218,70 @@ public class OrderService : IOrderService
         }
     }
 
+    public async Task<bool> CompleteOrderAsync(long orderId, CancellationToken cancellationToken = default)
+    {
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var order = await _orderRepository.GetWithDetailsAsync(orderId, cancellationToken);
+            if (order == null || order.OrderStatus != "Shipped")
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                return false;
+            }
+
+            order.OrderStatus = "Completed";
+            order.PaymentStatus = "Paid";
+            order.CompletedAt = DateTime.UtcNow;
+
+            // Activate electronic warranty by updating shipment to Delivered
+            var shipment = order.Shipments.OrderByDescending(s => s.CreatedAt).FirstOrDefault();
+            if (shipment != null)
+            {
+                shipment.ShipmentStatus = "Delivered";
+                shipment.DeliveredAt = DateTime.UtcNow;
+            }
+            else
+            {
+                order.Shipments.Add(new Shipment
+                {
+                    OrderId = order.OrderId,
+                    ShippingMethodId = order.ShippingMethodId ?? 1,
+                    CarrierName = "Standard",
+                    TrackingNumber = "N/A",
+                    ShipmentStatus = "Delivered",
+                    ShippedAt = order.PlacedAt,
+                    DeliveredAt = DateTime.UtcNow
+                });
+            }
+
+            _orderRepository.Update(order);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+            return true;
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw;
+        }
+    }
+
     public async Task<bool> CancelOrderAsync(long orderId, CancellationToken cancellationToken = default)
     {
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
             var order = await _orderRepository.GetWithDetailsAsync(orderId, cancellationToken);
-            if (order == null || order.OrderStatus == "Cancelled" || order.OrderStatus == "Completed")
+            // No-Return Policy: Disallow cancellation if already Cancelled, Completed, or Shipped
+            if (order == null || order.OrderStatus == "Cancelled" || order.OrderStatus == "Completed" || order.OrderStatus == "Shipped")
             {
                 await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                 return false;
             }
 
             order.OrderStatus = "Cancelled";
+            order.CancelledAt = DateTime.UtcNow;
             _orderRepository.Update(order);
 
             // Release reserved inventory

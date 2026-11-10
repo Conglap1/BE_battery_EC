@@ -2,6 +2,7 @@ using BatteryEC.Application.DTOs.Assembly;
 using BatteryEC.Domain.Entities.Catalog;
 using BatteryEC.Domain.Entities.Inventory;
 using BatteryEC.Domain.Entities.Production;
+using BatteryEC.Domain.Enums;
 using BatteryEC.Domain.Repositories;
 using Microsoft.EntityFrameworkCore;
 
@@ -36,12 +37,43 @@ public class AssemblyService : IAssemblyService
 
     public async Task<AssemblyOrderDto> ExecuteAssemblyOrderAsync(CreateAssemblyOrderDto dto, long userId, CancellationToken cancellationToken = default)
     {
+        if (dto == null) throw new ArgumentNullException(nameof(dto));
+        if (dto.BundleVariantId <= 0) throw new InvalidOperationException("Mã biến thể pack pin không hợp lệ.");
+        if (dto.QuantityProduced <= 0) throw new InvalidOperationException("Số lượng pack pin sản xuất phải lớn hơn 0.");
+        if (dto.Items == null || dto.Items.Count == 0) throw new InvalidOperationException("Lệnh lắp ráp phải có ít nhất một linh kiện tiêu hao.");
+
+        foreach (var item in dto.Items)
+        {
+            if (item.ComponentVariantId <= 0) throw new InvalidOperationException("Mã linh kiện tiêu hao không hợp lệ.");
+            if (item.QuantityConsumed <= 0) throw new InvalidOperationException($"Số lượng tiêu hao linh kiện #{item.ComponentVariantId} phải lớn hơn 0.");
+            if (item.UnitCost < 0) throw new InvalidOperationException($"Đơn giá linh kiện #{item.ComponentVariantId} không được âm.");
+        }
+
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
             var bundleVariant = await _variantRepository.GetByIdAsync(dto.BundleVariantId, cancellationToken)
                 ?? throw new InvalidOperationException($"Bundle variant #{dto.BundleVariantId} not found.");
 
+            // 1. Kiểm tra tồn khả dụng (AvailableStock) cho toàn bộ linh kiện trước khi thực hiện
+            var compInventoryMap = new Dictionary<long, BatteryEC.Domain.Entities.Inventory.Inventory>();
+            foreach (var group in dto.Items.GroupBy(i => i.ComponentVariantId))
+            {
+                var compVariantId = group.Key;
+                var totalConsumed = group.Sum(i => i.QuantityConsumed);
+
+                var compInventory = await _inventoryRepository.GetByVariantIdAsync(compVariantId, cancellationToken)
+                    ?? throw new InvalidOperationException($"Không tìm thấy bản ghi tồn kho cho linh kiện #{compVariantId}.");
+
+                if (compInventory.AvailableStock < totalConsumed)
+                {
+                    throw new InvalidOperationException($"Linh kiện #{compVariantId} không đủ tồn kho khả dụng để lắp ráp (Khả dụng: {compInventory.AvailableStock}, Yêu cầu: {totalConsumed}).");
+                }
+
+                compInventoryMap[compVariantId] = compInventory;
+            }
+
+            // 2. Khởi tạo đối tượng AssemblyOrder và chi tiết linh kiện
             decimal totalCost = 0;
             var order = new AssemblyOrder
             {
@@ -49,6 +81,7 @@ public class AssemblyService : IAssemblyService
                     ? $"ASM-{DateTime.UtcNow:yyyyMMddHHmmss}-{dto.BundleVariantId}"
                     : dto.AssemblyCode,
                 BundleVariantId = dto.BundleVariantId,
+                BundleVariant = bundleVariant,
                 QuantityProduced = dto.QuantityProduced,
                 Status = "Completed",
                 Note = dto.Note,
@@ -67,28 +100,41 @@ public class AssemblyService : IAssemblyService
                 order.Items.Add(new AssemblyOrderItem
                 {
                     ComponentVariantId = item.ComponentVariantId,
+                    ComponentVariant = componentVariant,
                     QuantityConsumed = item.QuantityConsumed,
                     UnitCost = item.UnitCost,
                     LineTotal = lineTotal
                 });
+            }
 
-                // Deduct component stock
-                var compInventory = await _inventoryRepository.GetByVariantIdAsync(item.ComponentVariantId, cancellationToken);
-                if (compInventory != null)
-                {
-                    compInventory.QuantityOnHand -= item.QuantityConsumed;
-                    compInventory.Version++;
-                    compInventory.UpdatedAt = DateTime.UtcNow;
-                    _inventoryRepository.Update(compInventory);
-                }
+            order.TotalCost = totalCost;
+            order.UnitCost = dto.QuantityProduced > 0 ? Math.Round(totalCost / dto.QuantityProduced, 2) : 0;
+
+            // 3. LƯU ASSEMBLY ORDER TRƯỚC ĐỂ DB SINH RA AssemblyOrderId (Khắc phục ISSUE-02)
+            await _assemblyOrderRepository.AddAsync(order, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            // 4. CẬP NHẬT GIÁ VỐN CHO PACK PIN THÀNH PHẨM (Khắc phục ISSUE-01)
+            bundleVariant.CostPrice = order.UnitCost;
+            bundleVariant.UpdatedAt = DateTime.UtcNow;
+            _variantRepository.Update(bundleVariant);
+
+            // 5. TRỪ KHO LINH KIỆN VÀ GHI THẺ KHO VỚI ReferenceId CHÍNH XÁC
+            foreach (var item in order.Items)
+            {
+                var compInventory = compInventoryMap[item.ComponentVariantId];
+                compInventory.QuantityOnHand -= item.QuantityConsumed;
+                compInventory.Version++;
+                compInventory.UpdatedAt = DateTime.UtcNow;
+                _inventoryRepository.Update(compInventory);
 
                 await _inventoryRepository.AddTransactionAsync(new InventoryTransaction
                 {
                     ProductVariantId = item.ComponentVariantId,
-                    TransactionType = "AssemblyConsumption",
+                    TransactionType = InventoryTransactionType.AssemblyConsumption,
                     QuantityChange = -item.QuantityConsumed,
                     ReferenceType = "AssemblyOrder",
-                    ReferenceId = 0,
+                    ReferenceId = order.AssemblyOrderId, // ID thực tế vừa được sinh
                     UnitCost = item.UnitCost,
                     CreatedByUserId = userId,
                     Note = $"Consumed in {order.AssemblyCode}",
@@ -96,13 +142,7 @@ public class AssemblyService : IAssemblyService
                 }, cancellationToken);
             }
 
-            order.TotalCost = totalCost;
-            order.UnitCost = dto.QuantityProduced > 0 ? Math.Round(totalCost / dto.QuantityProduced, 2) : 0;
-
-            await _assemblyOrderRepository.AddAsync(order, cancellationToken);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-            // Add finished bundle stock
+            // 6. TĂNG KHO THÀNH PHẨM VÀ GHI THẺ KHO NHẬP PACK PIN
             var bundleInventory = await _inventoryRepository.GetByVariantIdAsync(dto.BundleVariantId, cancellationToken);
             if (bundleInventory == null)
             {
@@ -128,16 +168,17 @@ public class AssemblyService : IAssemblyService
             await _inventoryRepository.AddTransactionAsync(new InventoryTransaction
             {
                 ProductVariantId = dto.BundleVariantId,
-                TransactionType = "AssemblyProduction",
+                TransactionType = InventoryTransactionType.AssemblyProduction,
                 QuantityChange = dto.QuantityProduced,
                 ReferenceType = "AssemblyOrder",
-                ReferenceId = order.AssemblyOrderId,
+                ReferenceId = order.AssemblyOrderId, // ID thực tế vừa được sinh
                 UnitCost = order.UnitCost,
                 CreatedByUserId = userId,
                 Note = $"Produced from {order.AssemblyCode}",
                 CreatedAt = DateTime.UtcNow
             }, cancellationToken);
 
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
             return MapToDto(order);
         }

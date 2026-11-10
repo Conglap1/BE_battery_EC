@@ -36,7 +36,9 @@ public class AssemblyOrderConfiguration : IEntityTypeConfiguration<AssemblyOrder
         builder.Property(ao => ao.AssemblyOrderId).UseIdentityAlwaysColumn();
         builder.Property(ao => ao.AssemblyCode).HasMaxLength(40).IsRequired();
         builder.Property(ao => ao.TotalCost).HasPrecision(18, 2).HasDefaultValue(0m);
-        builder.Property(ao => ao.UnitCost).HasPrecision(18, 2);
+        builder.Property(ao => ao.UnitCost)
+            .HasPrecision(18, 2)
+            .ValueGeneratedOnAddOrUpdate();
         builder.Property(ao => ao.Status).HasMaxLength(20).HasDefaultValue("Completed");
         builder.Property(ao => ao.Note).HasMaxLength(500);
 
@@ -63,7 +65,9 @@ public class AssemblyOrderItemConfiguration : IEntityTypeConfiguration<AssemblyO
         builder.HasKey(aoi => aoi.AssemblyOrderItemId);
         builder.Property(aoi => aoi.AssemblyOrderItemId).UseIdentityAlwaysColumn();
         builder.Property(aoi => aoi.UnitCost).HasPrecision(18, 2).IsRequired();
-        builder.Property(aoi => aoi.LineTotal).HasPrecision(18, 2).IsRequired();
+        builder.Property(aoi => aoi.LineTotal)
+            .HasPrecision(18, 2)
+            .ValueGeneratedOnAddOrUpdate();
 
         builder.HasOne(aoi => aoi.AssemblyOrder)
             .WithMany(ao => ao.Items)

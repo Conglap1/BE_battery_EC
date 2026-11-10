@@ -2,6 +2,7 @@ using BatteryEC.Application.DTOs.Pos;
 using BatteryEC.Domain.Entities.Catalog;
 using BatteryEC.Domain.Entities.Inventory;
 using BatteryEC.Domain.Entities.Pos;
+using BatteryEC.Domain.Enums;
 using BatteryEC.Domain.Repositories;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,9 +29,57 @@ public class PosService : IPosService
 
     public async Task<SaleDto> CreateSaleAsync(CreateSaleDto dto, long cashierUserId, CancellationToken cancellationToken = default)
     {
+        // 1. VALIDATION ĐẦU VÀO & GIỎ HÀNG (Khắc phục ISSUE-32)
+        if (dto == null) throw new ArgumentNullException(nameof(dto));
+        if (dto.Items == null || dto.Items.Count == 0)
+        {
+            throw new InvalidOperationException("Giỏ hàng bán lẻ tại quầy không được để trống.");
+        }
+        if (dto.DiscountAmount < 0)
+        {
+            throw new InvalidOperationException("Tiền chiết khấu không được âm.");
+        }
+
+        foreach (var item in dto.Items)
+        {
+            if (item.ProductVariantId <= 0)
+            {
+                throw new InvalidOperationException("Mã sản phẩm không hợp lệ.");
+            }
+            if (item.Quantity <= 0)
+            {
+                throw new InvalidOperationException($"Số lượng bán cho sản phẩm #{item.ProductVariantId} phải lớn hơn 0.");
+            }
+        }
+
+        var paymentMethod = string.IsNullOrWhiteSpace(dto.PaymentMethod) ? "Cash" : dto.PaymentMethod.Trim();
+        if (paymentMethod != "Cash" && paymentMethod != "Card" && paymentMethod != "BankTransfer")
+        {
+            throw new InvalidOperationException($"Phương thức thanh toán '{dto.PaymentMethod}' không hợp lệ. Các phương thức hỗ trợ: Cash, Card, BankTransfer.");
+        }
+
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
+            // 2. KIỂM TRA TỒN KHO KHẢ DỤNG CHO TOÀN BỘ GIỎ HÀNG TRƯỚC KHI TRỪ (Khắc phục ISSUE-05)
+            var inventoryMap = new Dictionary<long, BatteryEC.Domain.Entities.Inventory.Inventory>();
+            foreach (var group in dto.Items.GroupBy(i => i.ProductVariantId))
+            {
+                var variantId = group.Key;
+                var totalNeeded = group.Sum(i => i.Quantity);
+
+                var inventory = await _inventoryRepository.GetByVariantIdAsync(variantId, cancellationToken)
+                    ?? throw new InvalidOperationException($"Không tìm thấy bản ghi tồn kho cho sản phẩm #{variantId}.");
+
+                if (inventory.AvailableStock < totalNeeded)
+                {
+                    throw new InvalidOperationException($"Sản phẩm #{variantId} không đủ tồn kho khả dụng để bán tại quầy (Khả dụng: {inventory.AvailableStock}, Cần bán: {totalNeeded}).");
+                }
+
+                inventoryMap[variantId] = inventory;
+            }
+
+            // 3. KHỞI TẠO HÓA ĐƠN VÀ CHI TIẾT SẢN PHẨM BÁN
             var sale = new Sale
             {
                 SaleCode = $"POS-{DateTime.UtcNow:yyyyMMddHHmmss}-{cashierUserId}",
@@ -38,7 +87,7 @@ public class PosService : IPosService
                 CustomerId = dto.CustomerId,
                 CustomerName = dto.CustomerName,
                 CustomerPhone = dto.CustomerPhone,
-                PaymentMethod = dto.PaymentMethod,
+                PaymentMethod = paymentMethod,
                 SaleStatus = "Completed",
                 Note = dto.Note,
                 SoldAt = DateTime.UtcNow
@@ -65,36 +114,45 @@ public class PosService : IPosService
                     Quantity = item.Quantity,
                     LineTotal = lineTotal
                 });
+            }
 
-                // Immediate stock deduction for retail counter sales
-                var inventory = await _inventoryRepository.GetByVariantIdAsync(item.ProductVariantId, cancellationToken);
-                if (inventory != null)
-                {
-                    inventory.QuantityOnHand -= item.Quantity;
-                    inventory.Version++;
-                    inventory.UpdatedAt = DateTime.UtcNow;
-                    _inventoryRepository.Update(inventory);
-                }
+            // Kiểm tra chiết khấu không vượt quá tổng tiền hàng (Khắc phục ISSUE-32)
+            if (dto.DiscountAmount > subtotal)
+            {
+                throw new InvalidOperationException($"Tiền chiết khấu ({dto.DiscountAmount:N0} đ) không được vượt quá tổng tiền hàng ({subtotal:N0} đ).");
+            }
+
+            sale.SubtotalAmount = subtotal;
+            sale.DiscountAmount = dto.DiscountAmount;
+            sale.TotalAmount = subtotal - dto.DiscountAmount;
+
+            // 4. LƯU SALE TRƯỚC ĐỂ DB SINH RA SaleId (Khắc phục ISSUE-06)
+            await _saleRepository.AddAsync(sale, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            // 5. TRỪ KHO VÀ GHI THẺ KHO CounterSale VỚI ReferenceId = sale.SaleId CHÍNH XÁC
+            foreach (var item in sale.Items)
+            {
+                var inventory = inventoryMap[item.ProductVariantId];
+                inventory.QuantityOnHand -= item.Quantity;
+                inventory.Version++;
+                inventory.UpdatedAt = DateTime.UtcNow;
+                _inventoryRepository.Update(inventory);
 
                 await _inventoryRepository.AddTransactionAsync(new InventoryTransaction
                 {
                     ProductVariantId = item.ProductVariantId,
-                    TransactionType = "CounterSale",
+                    TransactionType = InventoryTransactionType.CounterSale,
                     QuantityChange = -item.Quantity,
                     ReferenceType = "Sale",
-                    ReferenceId = 0,
-                    UnitCost = variant.CostPrice ?? 0,
+                    ReferenceId = sale.SaleId, // ID thực tế vừa được sinh
+                    UnitCost = item.CostPrice,
                     CreatedByUserId = cashierUserId,
                     Note = $"Sold at counter {sale.SaleCode}",
                     CreatedAt = DateTime.UtcNow
                 }, cancellationToken);
             }
 
-            sale.SubtotalAmount = subtotal;
-            sale.DiscountAmount = dto.DiscountAmount;
-            sale.TotalAmount = Math.Max(0, subtotal - dto.DiscountAmount);
-
-            await _saleRepository.AddAsync(sale, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 

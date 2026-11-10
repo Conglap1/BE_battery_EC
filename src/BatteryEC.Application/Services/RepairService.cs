@@ -136,7 +136,7 @@ public class RepairService : IRepairService
         }
     }
 
-    public async Task<bool> UpdateStatusAsync(long ticketId, string status, string? solutionNote, decimal? finalCost, CancellationToken cancellationToken = default)
+    public async Task<bool> UpdateStatusAsync(long ticketId, string status, string? solutionNote, decimal? finalCost, int? warrantyMonths = null, CancellationToken cancellationToken = default)
     {
         var ticket = await _repairTicketRepository.GetWithItemsAsync(ticketId, cancellationToken);
         if (ticket == null) return false;
@@ -150,6 +150,11 @@ public class RepairService : IRepairService
         if (finalCost.HasValue)
         {
             ticket.FinalCost = finalCost.Value;
+        }
+
+        if (warrantyMonths.HasValue)
+        {
+            ticket.WarrantyMonths = warrantyMonths.Value;
         }
 
         if (status == "Completed")

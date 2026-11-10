@@ -19,6 +19,7 @@ public class AuthControllerTests
         public Func<LoginRequestDto, Task<AuthResponseDto>>? OnLogin { get; set; }
         public Func<string?, Task<AuthResponseDto>>? OnRefreshToken { get; set; }
         public Func<long, Task<UserProfileDto>>? OnGetCurrentUser { get; set; }
+        public Func<string?, long?, Task>? OnLogout { get; set; }
 
         public Task<AuthResponseDto> RegisterAsync(RegisterRequestDto request, CancellationToken cancellationToken = default)
         {
@@ -66,6 +67,12 @@ public class AuthControllerTests
                 FullName = "Profile User",
                 Roles = new List<string> { "User" }
             });
+        }
+
+        public Task LogoutAsync(string? refreshToken, long? userId = null, CancellationToken cancellationToken = default)
+        {
+            if (OnLogout != null) return OnLogout(refreshToken, userId);
+            return Task.CompletedTask;
         }
     }
 
@@ -316,5 +323,48 @@ public class AuthControllerTests
         var notFound = Assert.IsType<NotFoundObjectResult>(result.Result);
         var envelope = Assert.IsType<ApiResponse<UserProfileDto>>(notFound.Value);
         Assert.False(envelope.Success);
+    }
+
+    [Fact]
+    public async Task Logout_WithCookieToken_RevokesTokenAndDeletesCookie()
+    {
+        var (controller, context, authService, _) = CreateController();
+        context.Request.Headers["Cookie"] = "refreshToken=valid_refresh_token";
+
+        string? capturedToken = null;
+        authService.OnLogout = (token, userId) =>
+        {
+            capturedToken = token;
+            return Task.CompletedTask;
+        };
+
+        var actionResult = await controller.Logout(null, CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var response = Assert.IsType<ApiResponse<bool>>(okResult.Value);
+        Assert.True(response.Success);
+        Assert.Equal("valid_refresh_token", capturedToken);
+        Assert.True(context.Response.Headers.ContainsKey("Set-Cookie"));
+    }
+
+    [Fact]
+    public async Task Logout_WithRequestBodyToken_RevokesTokenAndDeletesCookie()
+    {
+        var (controller, context, authService, _) = CreateController();
+        var request = new RefreshTokenRequestDto { RefreshToken = "body_refresh_token" };
+
+        string? capturedToken = null;
+        authService.OnLogout = (token, userId) =>
+        {
+            capturedToken = token;
+            return Task.CompletedTask;
+        };
+
+        var actionResult = await controller.Logout(request, CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var response = Assert.IsType<ApiResponse<bool>>(okResult.Value);
+        Assert.True(response.Success);
+        Assert.Equal("body_refresh_token", capturedToken);
     }
 }

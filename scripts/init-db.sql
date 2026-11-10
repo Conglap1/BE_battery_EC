@@ -1463,12 +1463,12 @@ CREATE VIEW public.vw_total_revenue_summary AS
             count(*) AS repair_ticket_count,
             sum(
                 CASE
-                    WHEN ((repairticketsagg.ticket_status)::text = 'Completed'::text) THEN repairticketsagg.final_cost
+                    WHEN ((repairticketsagg.ticket_status)::text = ANY (ARRAY['Completed'::character varying, 'Delivered'::character varying]::text[])) THEN repairticketsagg.final_cost
                     ELSE (0)::numeric
                 END) AS repair_completed_revenue,
             sum(
                 CASE
-                    WHEN ((repairticketsagg.ticket_status)::text = 'Completed'::text) THEN repairticketsagg.repair_cogs
+                    WHEN ((repairticketsagg.ticket_status)::text = ANY (ARRAY['Completed'::character varying, 'Delivered'::character varying]::text[])) THEN repairticketsagg.repair_cogs
                     ELSE (0)::numeric
                 END) AS repair_completed_cogs
            FROM repairticketsagg
@@ -1579,7 +1579,7 @@ UNION ALL
             ELSE 'Hết hạn bảo hành'::text
         END AS warranty_status
    FROM public.repair_tickets rt
-  WHERE ((rt.ticket_status)::text = 'Completed'::text);
+  WHERE ((rt.ticket_status)::text = ANY (ARRAY['Completed'::character varying, 'Delivered'::character varying]::text[]));
 
 
 --

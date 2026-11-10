@@ -630,7 +630,7 @@ public class ConcurrencyAndInventorySafetyTests
     }
 
     [Fact]
-    public async Task CompleteOrderAsync_ValidShippedOrder_DeductsStockBumpsVersionCommitsAndReturnsTrue()
+    public async Task CompleteOrderAsync_ValidShippedOrder_CompletesOrderActivatesWarrantyAndDoesNotDoubleDeductStock()
     {
         var uow = new FakeUnitOfWork();
         var orderRepo = new FakeOrderRepository();
@@ -641,7 +641,7 @@ public class ConcurrencyAndInventorySafetyTests
         {
             ProductVariantId = 10,
             QuantityOnHand = 20,
-            QuantityReserved = 5,
+            QuantityReserved = 0,
             Version = 1
         };
         inventoryRepo.AddInventory(inventory);
@@ -663,9 +663,9 @@ public class ConcurrencyAndInventorySafetyTests
 
         Assert.True(result);
         Assert.Equal("Completed", order.OrderStatus);
-        Assert.Equal(15, inventory.QuantityOnHand); // 20 - 5
-        Assert.Equal(0, inventory.QuantityReserved); // 5 - 5
-        Assert.Equal(2, inventory.Version); // Version bumped
+        Assert.Equal(20, inventory.QuantityOnHand); // Stock deducted at 3PL shipment handover (R3), not duplicated upon delivery
+        Assert.Equal(0, inventory.QuantityReserved);
+        Assert.Equal(1, inventory.Version);
         Assert.True(uow.CommitCalled);
         Assert.False(uow.RollbackCalled);
     }

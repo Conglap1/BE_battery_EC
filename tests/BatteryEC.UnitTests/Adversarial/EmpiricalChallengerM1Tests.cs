@@ -492,7 +492,7 @@ public class EmpiricalChallengerM1Tests
         public Task<bool> AddRepairItemAsync(long ticketId, long componentVariantId, int quantity, decimal unitPrice, long technicianUserId, CancellationToken cancellationToken = default) =>
             Task.FromResult(true);
 
-        public Task<bool> UpdateStatusAsync(long ticketId, string status, string? solutionNote, decimal? finalCost, CancellationToken cancellationToken = default) =>
+        public Task<bool> UpdateStatusAsync(long ticketId, string status, string? solutionNote, decimal? finalCost, int? warrantyMonths = null, CancellationToken cancellationToken = default) =>
             Task.FromResult(true);
     }
 

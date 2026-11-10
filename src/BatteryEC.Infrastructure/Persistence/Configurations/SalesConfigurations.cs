@@ -98,7 +98,9 @@ public class OrderItemConfiguration : IEntityTypeConfiguration<OrderItem>
         builder.Property(oi => oi.UnitPrice).HasPrecision(18, 2).IsRequired();
         builder.Property(oi => oi.CostPrice).HasPrecision(18, 2);
         builder.Property(oi => oi.WarrantyMonths).HasDefaultValue(0);
-        builder.Property(oi => oi.LineTotal).HasPrecision(18, 2).IsRequired();
+        builder.Property(oi => oi.LineTotal)
+            .HasPrecision(18, 2)
+            .ValueGeneratedOnAddOrUpdate();
 
         builder.HasOne(oi => oi.Order)
             .WithMany(o => o.Items)
