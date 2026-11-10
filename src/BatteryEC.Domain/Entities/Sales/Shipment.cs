@@ -7,7 +7,7 @@ public class Shipment
     public int ShippingMethodId { get; set; }
     public string? CarrierName { get; set; }
     public string? TrackingNumber { get; set; }
-    public string ShipmentStatus { get; set; } = "Preparing";
+    public string ShipmentStatus { get; set; } = "Pending";
     public decimal ShippingFee { get; set; }
     public DateTime? ShippedAt { get; set; }
     public DateTime? DeliveredAt { get; set; }

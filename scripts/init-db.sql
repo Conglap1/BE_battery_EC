@@ -894,7 +894,7 @@ CREATE TABLE public.repair_tickets (
     CONSTRAINT repair_tickets_final_cost_check CHECK ((final_cost >= (0)::numeric)),
     CONSTRAINT repair_tickets_payment_method_check CHECK (((payment_method)::text = ANY ((ARRAY['Cash'::character varying, 'Card'::character varying, 'BankTransfer'::character varying])::text[]))),
     CONSTRAINT repair_tickets_payment_status_check CHECK (((payment_status)::text = ANY ((ARRAY['Unpaid'::character varying, 'Paid'::character varying])::text[]))),
-    CONSTRAINT repair_tickets_ticket_status_check CHECK (((ticket_status)::text = ANY ((ARRAY['Received'::character varying, 'Diagnosing'::character varying, 'Quoted'::character varying, 'Repairing'::character varying, 'Completed'::character varying, 'Delivered'::character varying, 'Cancelled'::character varying])::text[]))),
+    CONSTRAINT repair_tickets_ticket_status_check CHECK (((ticket_status)::text = ANY ((ARRAY['Received'::character varying, 'Diagnosing'::character varying, 'Quoted'::character varying, 'WaitingCustomer'::character varying, 'Repairing'::character varying, 'ReadyForPickup'::character varying, 'Completed'::character varying, 'Delivered'::character varying, 'Cancelled'::character varying])::text[]))),
     CONSTRAINT repair_tickets_warranty_months_check CHECK ((warranty_months >= 0))
 );
 

@@ -54,7 +54,7 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.Property(o => o.ShippingFee).HasPrecision(18, 2).HasDefaultValue(0m);
         builder.Property(o => o.TotalAmount).HasPrecision(18, 2).IsRequired();
         builder.Property(o => o.PaymentMethod).HasMaxLength(30).HasDefaultValue("COD");
-        builder.Property(o => o.PaymentStatus).HasMaxLength(30).HasDefaultValue("Unpaid");
+        builder.Property(o => o.PaymentStatus).HasMaxLength(30).HasDefaultValue("Pending");
         builder.Property(o => o.OrderStatus).HasMaxLength(30).HasDefaultValue("PendingConfirmation");
         builder.Property(o => o.CustomerNote).HasMaxLength(1000);
         builder.Property(o => o.AdminNote).HasMaxLength(1000);
@@ -147,7 +147,7 @@ public class ShipmentConfiguration : IEntityTypeConfiguration<Shipment>
         builder.Property(s => s.ShipmentId).UseIdentityAlwaysColumn();
         builder.Property(s => s.CarrierName).HasMaxLength(100);
         builder.Property(s => s.TrackingNumber).HasMaxLength(100);
-        builder.Property(s => s.ShipmentStatus).HasMaxLength(30).HasDefaultValue("Preparing");
+        builder.Property(s => s.ShipmentStatus).HasMaxLength(30).HasDefaultValue("Pending");
         builder.Property(s => s.ShippingFee).HasPrecision(18, 2).HasDefaultValue(0m);
         builder.Property(s => s.Note).HasMaxLength(500);
 

@@ -50,7 +50,7 @@ public class OrderService : IOrderService
                 PaymentMethod = dto.PaymentMethod,
                 CustomerNote = dto.CustomerNote,
                 OrderStatus = "PendingConfirmation",
-                PaymentStatus = "Unpaid",
+                PaymentStatus = "Pending",
                 PlacedAt = DateTime.UtcNow
             };
 

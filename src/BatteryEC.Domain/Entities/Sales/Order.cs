@@ -18,7 +18,7 @@ public class Order : IAggregateRoot
     public decimal ShippingFee { get; set; }
     public decimal TotalAmount { get; set; }
     public string PaymentMethod { get; set; } = "COD";
-    public string PaymentStatus { get; set; } = "Unpaid";
+    public string PaymentStatus { get; set; } = "Pending";
     public string OrderStatus { get; set; } = "PendingConfirmation";
     public string? CustomerNote { get; set; }
     public string? AdminNote { get; set; }
